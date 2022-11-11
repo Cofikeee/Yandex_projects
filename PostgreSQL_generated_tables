@@ -1,0 +1,138 @@
+
+-- Таблица Users
+CREATE TABLE Users (
+  					userId SERIAL PRIMARY KEY,
+  					age INTEGER DEFAULT NULL
+);
+
+-- Добавляю сгенерированный столбец age
+INSERT INTO Users (age)
+SELECT trunc(random() * 60 + 18) 
+  FROM generate_series(1, 500);
+
+-- Таблица Items
+CREATE TABLE Items (
+  					itemId SERIAL PRIMARY KEY,
+  					price INTEGER DEFAULT NULL
+);
+
+-- Добавляю сгенерированный столбец prices
+INSERT INTO Items (price)
+VALUES (250), (500), (1000), (1500), (2500), (5000);
+
+-- Таблица Purchases
+CREATE TABLE Purchases (
+  						purchaseId SERIAL PRIMARY KEY,
+  						userId INTEGER DEFAULT NULL,
+  						itemId INTEGER DEFAULT NULL,
+  						date TIMESTAMP DEFAULT NULL
+);
+
+-- Добавляю сгенерированный столбец userId, совпадающий с Users.userId
+INSERT INTO Purchases (userId)
+SELECT trunc(random() * 500 + 1) 
+  FROM generate_series(1, 2500);
+
+-- Добавляю сгенерированный столбец itemId, совпадающий с Items.itemId
+UPDATE Purchases
+   SET itemid = trunc(random() * 6 + 1)
+ WHERE itemid is NULL;
+
+-- Добавляю сгенерированный столбец dates
+UPDATE Purchases
+   SET date = DATE(
+  				   timestamp '2018-01-01' + random() 
+  				* (timestamp '2021-12-31' - timestamp '2018-01-01')
+)
+ WHERE date is NULL;
+-- Все расходы по месяцам, возраст 18-25
+SELECT date_trunc('month', pu.date) AS  dateMonth,
+       SUM(i.price) AS monthTotal
+FROM purchases AS pu
+JOIN items as i on pu.itemid = i.itemid
+WHERE pu.userId in (
+			     	SELECT u.userId
+				 	FROM users as u
+				 	WHERE u.age BETWEEN 18 and 25    				
+)
+GROUP BY dateMonth
+ORDER BY dateMonth;
+
+-- Средние траты в месяц, возраст 18-25
+SELECT (SUM(i.price)) / COUNT(date_trunc('month', pu.date)) AS paymentMonthAvg1825
+  FROM Purchases AS pu
+  JOIN Items AS i ON pu.itemid = i.itemid
+ WHERE pu.userId IN (
+			     	SELECT u.userId
+				 	  FROM Users as u
+				 	 WHERE u.age BETWEEN 18 and 25			
+);
+
+-- Все расходы по месяцам, возраст 26-35
+SELECT date_trunc('month', pu.date) AS  dateMonth,
+       SUM(i.price) AS monthTotal
+FROM purchases AS pu
+JOIN items as i on pu.itemid = i.itemid
+WHERE pu.userId in (
+			     	SELECT u.userId
+				 	FROM users as u
+				 	WHERE u.age BETWEEN 26 and 35    				
+)
+GROUP BY dateMonth
+ORDER BY dateMonth;
+
+-- Средние траты в месяц, возраст 26-35
+SELECT SUM(i.price) / COUNT(date_trunc('month', pu.date)) AS paymentMonthAvg2635 
+  FROM Purchases AS pu
+  JOIN Items AS i ON pu.itemid = i.itemid
+ WHERE pu.userId IN (
+			     	SELECT u.userId
+				 	  FROM Users as u
+				 	 WHERE u.age BETWEEN 26 and 35    				
+);
+
+-- Самый доходный месяц, возраст 35+
+SELECT EXTRACT(MONTH FROM pu.date) AS monthNumber, SUM(i.price) AS paymentTotal
+  FROM Purchases AS pu
+  JOIN Items AS i ON pu.itemid = i.itemid
+ WHERE pu.userId IN (
+			     	SELECT u.userId
+				   	  FROM Users AS u
+				  	 WHERE u.age >= 35 				
+)
+ GROUP BY monthNumber
+ ORDER BY paymentTotal DESC
+ LIMIT 1; -- Убрав данную строку, можно получить значения по всем месяцам
+ 
+-- Какой товар обеспечил наибольший вклад в выручку за последний год
+SELECT pu.itemId, SUM(i.price) AS year2021Total
+  FROM Purchases AS pu
+  JOIN Items AS i ON pu.itemid = i.itemid
+ WHERE pu.date >= '2021-1-1'
+ GROUP BY pu.itemId
+ ORDER BY year2021Total DESC
+ LIMIT 1; -- Убрав данную строку, можно получить значения по всем товарам
+ 
+-- Топ-3 товаров по выручке 
+SELECT pu.itemId, SUM(i.price) AS itemTotal
+  FROM Purchases AS pu
+  JOIN Items AS i ON pu.itemid = i.itemid
+ GROUP BY pu.itemId
+ ORDER BY itemTotal DESC
+ LIMIT 3; -- Убрав данную строку, можно получить значения по всем товарам
+ 
+-- Их доля в общей выручке за 2019 год
+SELECT pu.itemId, to_char(CAST(SUM(i.price) AS FLOAT) / 
+                   		 (
+                     	 SELECT CAST(SUM(i.price) AS FLOAT)
+                     	   FROM Purchases AS pu
+                     	   JOIN Items AS i ON pu.itemid = i.itemid
+                          WHERE pu.date BETWEEN '2019-1-1' AND '2019-12-31'
+                   		 )
+                         , 'FM999999999.0000') AS year2019PartFromTotal
+  FROM Purchases AS pu
+  JOIN Items AS i ON pu.itemid = i.itemid
+ WHERE pu.date BETWEEN '2019-1-1' AND '2019-12-31'
+ 	   AND pu.itemId IN (6, 5 , 4)
+ GROUP BY pu.itemId
+ ORDER BY year2019PartFromTotal DESC;
